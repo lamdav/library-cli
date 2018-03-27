@@ -14,9 +14,9 @@ def cli(config, verbose):
     config.verbose = verbose
     config.redis = Redis(charset='utf-8', decode_responses=True)
     config.key_type_to_book_set_map = {
-        'title': 'title:book',
-        'author': 'author:book',
-        'isbn': 'isbn:book'
+        'title': 'title:book_set',
+        'author': 'author:book_set',
+        'isbn': 'isbn:book_set'
     }
 
 
@@ -24,64 +24,105 @@ def cli(config, verbose):
 @click.argument('title')
 @click.argument('author')
 @click.argument('isbn')
-@click.argument('pages')
+@click.argument('pages', type=int)
 @config
 def add_book(config, title, author, isbn, pages):
     """
     Add a book to the library.
     """
     redis = config.redis
+    key_type_to_book_set_map = config.key_type_to_book_set_map
 
     def create_entry():
         # Create a basic book entity.
         ID_COUNTER = 'book_id_counter'
         current_book_id = redis.incr(ID_COUNTER)
-        book_entry_key = 'book:{}'.format(current_book_id)
-        _info('Storing {} {} {} {} as {}', title,
-              author, isbn, pages, book_entry_key)
-        redis.hset(book_entry_key, 'title', title)
-        redis.hset(book_entry_key, 'author', author)
-        redis.hset(book_entry_key, 'isbn', isbn)
-        redis.hset(book_entry_key, 'pages', pages)
+        book_id = 'book:{}'.format(current_book_id)
+        _info('Storing id={} title={} author={} isbn={} pages={}', book_id, title, author, isbn, pages)
+        redis.hset(book_id, 'title', title)
+        redis.hset(book_id, 'author', author)
+        redis.hset(book_id, 'isbn', isbn)
+        redis.hset(book_id, 'pages', pages)
         _success('Created book entry')
-        return book_entry_key
+        return book_id
 
-    def add_book_entry_to_tracking_set(tracking_set_key, tracking, book_entry_key):
-        tracking_set_counter = '{}_counter'.format(tracking_set_key)
+    def add_book_entry_to_tracking_set(tracking_set_key, tracking_set_type, tracking, book_id):
+        _info('Checking for existence of hset={} key={}', tracking_set_key, tracking)
         if redis.hexists(tracking_set_key, tracking):
+            _info('Found hset={} key={}', tracking_set_key, tracking)
             book_set_key = redis.hget(tracking_set_key, tracking)
         else:
-            _info('{} missing {} entry. Creating entry',
-                  tracking_set_key, tracking)
-            book_set_id = redis.incr(tracking_set_counter)
-            book_set_key = '{}:{}'.format(tracking_set_key, book_set_id)
+            BOOK_SET_ID_COUNTER = '{}:book_set_id_counter'.format(tracking_set_key)
+            book_set_id = redis.incr(BOOK_SET_ID_COUNTER)
+            book_set_key = '{}:{}:book_set{}'.format(tracking_set_type, tracking, book_set_id)
+            _info('Creating hset={} key={} value={}', tracking_set_key, tracking, book_set_key)
             redis.hset(tracking_set_key, tracking, book_set_key)
-        click.echo(book_set_key)
-        redis.sadd(book_set_key, book_entry_key)
-        _success('Added book entry to {} set', tracking_set_key)
+        redis.sadd(book_set_key, book_id)
+        _success('Added set={} key={}', book_set_key, book_id)
 
-    # To search by title, we keep a mapping of title -> book_set_id
-    # Book set id are a set of book_ids that share this title.
-    book_entry_key = create_entry()
-    TITLE_TO_BOOK = 'title:book'
-    add_book_entry_to_tracking_set(TITLE_TO_BOOK, title, book_entry_key)
-    AUTHOR_TO_BOOK = 'author:book'
-    add_book_entry_to_tracking_set(AUTHOR_TO_BOOK, author, book_entry_key)
-    ISBN_TO_BOOK = 'isbn:book'
-    add_book_entry_to_tracking_set(ISBN_TO_BOOK, isbn, book_entry_key)
+    # Add only if the isbn is not already in the library.
+    if _in_library(redis, isbn, key_type_to_book_set_map):
+        sys.exit(1)
+
+    # Process:
+    # 1. Create book entry.
+    # 2. Link each title:book_set, author:book_set, isbn:book_set with a new set or existing set
+    # 2a. If existing, then search will pair these up. Ex: same titles.
+    # 2b. If not, it is a brand new entry.
+    # 2c. Only isbn should remain unique. (verified above)
+    # 3. Add book_id to sets.
+    # (field:book_set) -> book_set_id -> book_set_id -> book
+    book_id = create_entry()
+    book_dict = {
+        'title': title,
+        'author': author,
+        'isbn': isbn,
+        'pages': pages
+    }
+    for book_set_type, book_set_key in key_type_to_book_set_map.items():
+        add_book_entry_to_tracking_set(book_set_key, book_set_type, book_dict.get(book_set_type), book_id)
 
 
 @cli.command()
-@click.argument('title')
-@click.argument('author')
 @click.argument('isbn')
-@click.argument('pages')
 @config
-def remove_book(config, title, author, isbn, pages):
+def remove_book(config, isbn):
     """
     Remove a book from the library.
     """
-    _warn('NOT IMPLEMENTED')
+    redis = config.redis
+    key_type_to_book_set_map = config.key_type_to_book_set_map
+    isbn_to_book_set_key = key_type_to_book_set_map.get('isbn', 'isbn:book_set')
+
+    # Remove books that are in the library.
+    if not _in_library(redis, isbn, key_type_to_book_set_map):
+        sys.exit(1)
+
+    # Get book_set (will have cardinaity=1)
+    isbn_book_set = redis.hget(isbn_to_book_set_key, isbn)
+    book_set = redis.smembers(isbn_book_set)
+
+    for book_id in book_set:
+        # Clean up the field:book_sets and book_sets.
+        for field_type, field_to_book_set_key in key_type_to_book_set_map.items():
+            # Get the value of the book (i.e. title, author, etc.)
+            field_value = redis.hget(book_id, field_type)
+
+            # Remove entry from set of book_id
+            field_book_set_id = redis.hget(field_to_book_set_key, field_value)
+            _info('removing set={} key={}', field_book_set_id, book_id)
+            redis.srem(field_book_set_id, book_id)
+
+            # If it is empty after removal, remove book_set from field:book_sets.
+            # This means there are no other fields with say title 'hello'.
+            if redis.scard(field_book_set_id) == 0:
+                _info('deleting set={}', field_book_set_id)
+                redis.delete(field_book_set_id)
+                _info('removing hset={} key={}', field_to_book_set_key, field_value)
+                redis.hdel(field_to_book_set_key, field_value)
+
+        _info('deleting book_id={}', book_id)
+        redis.delete(book_id)
 
 
 @cli.command()
@@ -94,10 +135,10 @@ def edit_book(config):
 
 
 @cli.command()
-@click.argument('keyword')
 @click.argument('key_type', type=click.Choice(['title', 'author', 'isbn']))
+@click.argument('keyword')
 @config
-def search_book(config: Config, keyword: str, key_type: str):
+def search_book(config: Config,  key_type: str, keyword: str):
     """
     Search for books.
     """
@@ -111,11 +152,13 @@ def search_book(config: Config, keyword: str, key_type: str):
         sys.exit(1)
 
     # Get book_set_key
+    _info('Using key={} to get book_set_key', TYPE_TO_BOOK)
     if redis.hexists(TYPE_TO_BOOK, keyword):
         book_set_key = redis.hget(TYPE_TO_BOOK, keyword)
     else:
         _warn('book with {} {} does not exist in library', key_type, keyword)
         sys.exit(1)
+    _info('Got book_set_key {}', book_set_key)
 
     # Get book_entry_keys associated with this title.
     book_entry_keys = redis.smembers(book_set_key)
@@ -129,8 +172,7 @@ def search_book(config: Config, keyword: str, key_type: str):
         author = book.get('author')
         isbn = book.get('isbn')
         pages = book.get('pages')
-        _info('{}: title={} author={} isbn={} pages={}',
-              index, title, author, isbn, pages)
+        _success('{}: title={} author={} isbn={} pages={}', index, title, author, isbn, pages)
     sys.exit(0)
 
 
@@ -142,6 +184,15 @@ def sort_books_by(config: Config, sort_by: str):
     Sort books.
     """
     _warn('NOT IMPLEMENTED')
+
+
+def _in_library(redis: Redis, isbn: str, key_type_to_book_set_map: dict):
+    # Use uniqueness of isbn numbers to determine existence in
+    isbn_to_book_set_key = key_type_to_book_set_map.get('isbn', 'isbn:book_set')
+    if redis.hexists(isbn_to_book_set_key, isbn):
+        _warn('A book with isbn {} already exists', isbn)
+        return True
+    return False
 
 
 @cli.command()
