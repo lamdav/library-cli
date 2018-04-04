@@ -1,9 +1,11 @@
 import pathlib
 import sys
 
-sys.path.append(pathlib.Path().cwd().as_posix())
 import click
 from redis import Redis
+
+cwd = pathlib.Path().cwd()
+sys.path.append(cwd.as_posix())
 
 from config import Config
 
@@ -11,10 +13,8 @@ config = click.make_pass_decorator(Config, ensure=True)
 
 
 @click.group()
-@click.option('--verbose', '-v', is_flag=True, help='Print all logs')
 @config
-def cli(config: Config, verbose: bool):
-    config.verbose = verbose
+def cli(config: Config):
     config.redis = Redis(charset='utf-8', decode_responses=True)
     config.key_type_to_book_set_map = {
         'title': 'title:book_set',
@@ -55,6 +55,7 @@ def add_book(config: Config, title: str, author: str, isbn: str, pages: int, qua
         redis.hset(book_id, 'isbn', isbn)
         redis.hset(book_id, 'pages', pages)
         redis.hset(book_id, 'quantity', quantity)
+        redis.hset(book_id, 'checkedout', 0)
         _success('Created book entry')
         return book_id
 
@@ -172,6 +173,18 @@ def remove(config: Config, entity: str, identifier: str):
     entity_set = _get_by_identifier(redis, identifier, key_type_map)
 
     for entity_id in entity_set:
+        if entity == 'book':
+            checkedout = int(redis.hget(entity_id, 'checkedout'))
+            if checkedout > 0:
+                _error('Cannot remove book with isbn {}. It has {} copies checked out.', identifier, checkedout)
+                sys.exit(1)
+        else:
+            user_loans_key = '{}:loans'.format(entity_id)
+            user_loans = redis.hgetall(user_loans_key)
+            if len(user_loans) > 0:
+                _error('Cannot remove user {}. User has these books {}.', identifier, user_loans)
+                sys.exit(1)
+
         # Clean up the field:book_sets and book_sets.
         for field_type, field_to_set_key in key_type_map.items():
             # Get the value of the book (i.e. title, author, etc.)
@@ -369,7 +382,7 @@ def sort_books_by(config: Config, sort_by: str):
     """
     redis = config.redis
 
-    fields = ['title', 'author', 'isbn', 'pages']
+    fields = ['title', 'author', 'isbn', 'pages', 'quantity']
     get_all_field_patterns = []
     pattern = ''
     for field in fields:
@@ -381,13 +394,12 @@ def sort_books_by(config: Config, sort_by: str):
     sort_alphanumeric = sort_by != 'pages'
     books = redis.sort('books', alpha=sort_alphanumeric, by=pattern, get=get_all_field_patterns)
     results = []
-    for i in range(0, len(books), 4):
-        results.append({
-            'title': books[i],
-            'author': books[i + 1],
-            'isbn': books[i + 2],
-            'pages': books[i + 3]
-        })
+    for i in range(0, len(books), len(fields)):
+        datum = dict()
+        for index, field in enumerate(fields):
+            datum[field] = books[i + index]
+
+        results.append(datum)
     _info('Sorted list of books by {}', sort_by)
     _display_list_of_books(results)
     sys.exit(0)
@@ -409,7 +421,7 @@ def checkout(config: Config, username: str, isbn: str):
         _error('User {} does not exist in library', username)
         sys.exit(1)
     elif not _in_library(redis, isbn, key_type_to_book_map):
-        _error('Book with isbn {} is not in library', key_type_to_book_map)
+        _error('Book with isbn {} is not in library', isbn)
         sys.exit(1)
 
     user_set = _get_by_identifier(redis, username, key_type_to_user_map)
@@ -422,6 +434,7 @@ def checkout(config: Config, username: str, isbn: str):
                 redis.hincrby(user_loans_key, book_id, 1)
             _info('book {} now has quantity {}', book_id, quantity - 1)
             redis.hincrby(book_id, 'quantity', -1)
+            redis.hincrby(book_id, 'checkedout', 1)
         else:
             _error('Book with isbn {} is not in stock', isbn)
             sys.exit(1)
@@ -446,7 +459,7 @@ def checkin(config: Config, username: str, isbn: str):
         _error('User {} does not exist', username)
         sys.exit(1)
     elif not _in_library(redis, isbn, key_type_to_book_map):
-        _error('Book with isbn {} is not in library', key_type_to_book_map)
+        _error('Book with isbn {} is not in library', isbn)
         sys.exit(1)
 
     user_set = _get_by_identifier(redis, username, key_type_to_user_map)
@@ -468,6 +481,10 @@ def checkin(config: Config, username: str, isbn: str):
 
                 _info('Updating library stock hset={}', book_id)
                 redis.hincrby(book_id, 'quantity', 1)
+                redis.hincrby(book_id, 'checkedout', -1)
+            else:
+                _error('Book with isbn {} is not loaned by user {}', isbn, username)
+                sys.exit(1)
 
 
 @cli.command()
@@ -543,7 +560,9 @@ def _display_list_of_books(books):
         isbn = book.get('isbn')
         pages = book.get('pages')
         quantity = book.get('quantity')
-        _success('{}: title={} author={} isbn={} pages={} quantity={}', index, title, author, isbn, pages, quantity)
+        checkedout = book.get('checkedout')
+        _success('{}: title={} author={} isbn={} pages={} quantity={} checkedout={}', index, title, author, isbn, pages,
+                 quantity, checkedout)
 
 
 def _display_list_of_users(users):
