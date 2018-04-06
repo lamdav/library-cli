@@ -329,7 +329,7 @@ def edit_user(config: Config, username: str, field: str, value: str):
 @config
 def search(config: Config, entity: str, key_type: str, keyword: str):
     """
-    Search for books.
+    Search for entity.
     """
     redis = config.redis
 
@@ -362,8 +362,7 @@ def search(config: Config, entity: str, key_type: str, keyword: str):
     for entity_id in entity_ids:
         data = redis.hgetall(entity_id)
         if entity == 'user':
-            user_loans_key = '{}:loans'.format(entity_id)
-            data['loans'] = redis.hgetall(user_loans_key)
+            data['loans'] = _get_user_loans(redis, entity_id)
         entities.append(data)
 
     if entity == 'book':
@@ -371,6 +370,11 @@ def search(config: Config, entity: str, key_type: str, keyword: str):
     else:
         _display_list_of_users(entities)
     sys.exit(0)
+
+
+def _get_user_loans(redis: Redis, user_id: str):
+    user_loans_key = '{}:loans'.format(user_id)
+    return redis.hgetall(user_loans_key)
 
 
 @cli.command()
@@ -431,7 +435,16 @@ def checkout(config: Config, username: str, isbn: str):
         if quantity > 0:
             for user_id in user_set:
                 user_loans_key = '{}:loans'.format(user_id)
+                _info('Adding book with isbn {} to {}', isbn, user_loans_key)
                 redis.hincrby(user_loans_key, book_id, 1)
+
+                book_checkout_id = '{}:checkedout'.format(book_id)
+                if redis.hexists(book_checkout_id, user_id):
+                    _info('Incrementing hset={} key={}', book_checkout_id, user_id)
+                    redis.hincrby(book_checkout_id, user_id, 1)
+                else:
+                    _info('Adding user {} to checkout hset {}', user_id, book_checkout_id)
+                    redis.hset(book_checkout_id, user_id, 1)
             _info('book {} now has quantity {}', book_id, quantity - 1)
             redis.hincrby(book_id, 'quantity', -1)
             redis.hincrby(book_id, 'checkedout', 1)
@@ -482,6 +495,18 @@ def checkin(config: Config, username: str, isbn: str):
                 _info('Updating library stock hset={}', book_id)
                 redis.hincrby(book_id, 'quantity', 1)
                 redis.hincrby(book_id, 'checkedout', -1)
+
+                book_checkout_id = '{}:checkedout'.format(book_id)
+                if redis.hexists(book_checkout_id, user_id):
+                    checkout_quantity = redis.hget(book_checkout_id, user_id)
+                    if checkout_quantity - 1 == 0:
+                        _info('User {} has returned all books with book_id {}', username, book_id)
+                        redis.hdel(book_checkout_id, user_id)
+                    else:
+                        _info('Decrementing book {} checkout quantity by 1', isbn)
+                        redis.hincrby(book_checkout_id, user_id, -1)
+                else:
+                    _warn('User {} was not recorded in the checkout hset', username)
             else:
                 _error('Book with isbn {} is not loaned by user {}', isbn, username)
                 sys.exit(1)
@@ -517,8 +542,34 @@ def stat(config: Config, username: str):
     for user_id in user_set:
         user_loans_key = '{}:loans'.format(user_id)
         user_loans = redis.hgetall(user_loans_key)
-
         display(user_loans)
+
+
+@cli.command()
+@click.argument('isbn')
+@config
+def who_checkedout(config: Config, isbn: str):
+    """
+    See who has checked out a book given isbn
+    """
+    redis = config.redis
+    key_type_to_book_map = config.key_type_to_book_set_map
+
+    if not _in_library(redis, isbn, key_type_to_book_map):
+        _error('Book with isbn {} is not in the library', isbn)
+        sys.exit(1)
+
+    book_set = _get_by_identifier(redis, isbn, key_type_to_book_map)
+    for book_id in book_set:
+        book_checkout_id = '{}:checkedout'.format(book_id)
+        user_and_quantity = redis.hgetall(book_checkout_id)
+        users = []
+        for user_id, quantity in user_and_quantity.items():
+            user_data = redis.hgetall(user_id)
+            user_data['loans'] = _get_user_loans(redis, user_id)
+            users.append(user_data)
+
+        _display_list_of_users(users)
 
 
 def _in_library(redis: Redis, identifier: str, key_type_map: dict) -> bool:
