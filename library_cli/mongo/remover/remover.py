@@ -23,7 +23,7 @@ def book(context: click.Context, isbn: str):
     Do not remove a book there is a book checked out.
     """
     api = extract_api(context)
-    api.info('Removing book isbn={}', isbn)
+    exit(0) if api.remove_book(isbn) else exit(1)
 
 
 @remove.command()
@@ -36,4 +36,4 @@ def user(context: click.Context, username: str):
     Do not remove user if they have a book checked out.
     """
     api = extract_api(context)
-    api.info('Removing user username={}', username)
+    exit(0) if api.remove_user(username) else exit(1)

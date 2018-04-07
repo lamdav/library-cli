@@ -1,4 +1,3 @@
-from sys import exit
 from typing import List
 
 import click

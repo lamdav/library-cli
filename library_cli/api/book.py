@@ -8,12 +8,14 @@ class Book(object):
         self.isbn = isbn
         self.pages = pages
         self.quantity = quantity
-        self.checked_out = 0
+        self.borrowers = []
+        self.id = None
 
     def __repr__(self):
-        return 'Book(title={}, author={}, isbn={}, pages={}, quantity={}, checked_out={})'.format(self.title,
-                                                                                                  self.authors,
-                                                                                                  self.isbn,
-                                                                                                  self.pages,
-                                                                                                  self.quantity,
-                                                                                                  self.checked_out)
+        return 'Book(_id={}, title={}, author={}, isbn={}, pages={}, quantity={}, borrowers={})'.format(self.id,
+                                                                                                        self.title,
+                                                                                                        self.authors,
+                                                                                                        self.isbn,
+                                                                                                        self.pages,
+                                                                                                        self.quantity,
+                                                                                                        self.borrowers)

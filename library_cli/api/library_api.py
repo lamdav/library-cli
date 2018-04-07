@@ -1,3 +1,5 @@
+from typing import Optional
+
 from .book import Book
 from .user import User
 from ..logger import Logger
@@ -14,7 +16,7 @@ class LibraryAPI(object):
         """
         self.logger.tag = tag
 
-    def get_book(self, isbn: str) -> Book:
+    def get_book(self, isbn: str) -> Optional[Book]:
         """
         Get a Book with the given isbn from the library.
 
@@ -38,7 +40,7 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
-    def remove_book(self, book: Book) -> bool:
+    def remove_book(self, isbn: str) -> bool:
         """
         Remove a Book from the library.
 
@@ -46,7 +48,7 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
-    def get_user(self, username: str) -> User:
+    def get_user(self, username: str) -> Optional[User]:
         """
         Get a User from the library.
         """
@@ -66,7 +68,7 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
-    def remove_user(self, user: User):
+    def remove_user(self, username: str):
         """
         Remove a User from the library.
         """
