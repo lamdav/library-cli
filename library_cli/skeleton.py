@@ -6,7 +6,7 @@ import click
 cwd = pathlib.Path().cwd()
 sys.path.append(cwd.as_posix())
 
-from config import Config
+from redis.config import Config
 
 config = click.make_pass_decorator(Config, ensure=True)
 

@@ -1,13 +1,12 @@
-import pathlib
 import sys
 
 import click
 from redis import Redis
 
-cwd = pathlib.Path().cwd()
-sys.path.append(cwd.as_posix())
+from .config import Config
 
-from config import Config
+# cwd = pathlib.Path().cwd()
+# sys.path.append(cwd.as_posix())
 
 config = click.make_pass_decorator(Config, ensure=True)
 
