@@ -1,6 +1,6 @@
 import click
 
-from ...context_extractor import extract_logger, extract_logger_and_client
+from ...context_extractor import extract_api
 
 BOOK_EDITABLE_FIELDS = ['title', 'author', 'pages', 'quantity']
 USER_EDITABLE_FIELDS = ['name', 'phone']
@@ -12,8 +12,8 @@ def edit(context: click.Context):
     """
     Library Edit Commands
     """
-    logger = extract_logger(context)
-    logger.tag = 'EDIT'
+    api = extract_api(context)
+    api.log_tag('EDIT')
 
 
 @edit.command()
@@ -27,8 +27,8 @@ def book(context: click.Context, isbn: str, field: str, value: str):
 
     Edit any field should also update any relevant data structures needed to quickly search.
     """
-    logger, mongo = extract_logger_and_client(context)
-    logger.info('Editing book isbn={} field={} new_value={}', isbn, field, value)
+    api = extract_api(context)
+    api.info('Editing book isbn={} field={} new_value={}', isbn, field, value)
 
 
 @edit.command()
@@ -41,5 +41,5 @@ def user(context: click.Context, username: str, field: str, value: str):
 
     Edit any field should also update any relevant data structures needed to quickly search.
     """
-    logger, mongo = extract_logger_and_client(context)
-    logger.info('Editing book isbn={} field={} new_value={}', username, field, value)
+    api = extract_api(context)
+    api.info('Editing book isbn={} field={} new_value={}', username, field, value)

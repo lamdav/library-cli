@@ -1,6 +1,6 @@
 import click
 
-from ...context_extractor import extract_logger, extract_logger_and_client
+from ...context_extractor import extract_api
 
 
 @click.group()
@@ -9,8 +9,8 @@ def remove(context: click.Context):
     """
     Library Remove Commands.
     """
-    logger = extract_logger(context)
-    logger.tag = 'REMOVE'
+    api = extract_api(context)
+    api.log_tag('REMOVE')
 
 
 @remove.command()
@@ -22,8 +22,8 @@ def book(context: click.Context, isbn: str):
 
     Do not remove a book there is a book checked out.
     """
-    logger, mongo = extract_logger_and_client(context)
-    logger.info('Removing book isbn={}', isbn)
+    api = extract_api(context)
+    api.info('Removing book isbn={}', isbn)
 
 
 @remove.command()
@@ -35,5 +35,5 @@ def user(context: click.Context, username: str):
 
     Do not remove user if they have a book checked out.
     """
-    logger, mongo = extract_logger_and_client(context)
-    logger.info('Removing user username={}', username)
+    api = extract_api(context)
+    api.info('Removing user username={}', username)

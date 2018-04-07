@@ -1,15 +1,7 @@
 import click
 
-from .logger import Logger
+from .api.library_api import LibraryAPI
 
 
-def extract_logger(context: click.Context):
-    return context.obj.get('logger', Logger())
-
-
-def extract_client(context: click.Context):
-    return context.obj.get('client')
-
-
-def extract_logger_and_client(context: click.Context):
-    return extract_logger(context), extract_client(context)
+def extract_api(context: click.Context) -> LibraryAPI:
+    return context.obj.get('api')

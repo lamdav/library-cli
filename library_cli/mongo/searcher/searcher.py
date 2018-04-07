@@ -1,6 +1,6 @@
 import click
 
-from ...context_extractor import extract_logger, extract_logger_and_client
+from ...context_extractor import extract_api
 
 BOOK_SEARCHABLE_FIELDS = ['title', 'author', 'isbn', 'name']
 USER_SEARCHABLE_FIELDS = ['name', 'username', 'phone']
@@ -12,8 +12,8 @@ def search(context: click.Context):
     """
     Library Search Commands.
     """
-    logger = extract_logger(context)
-    logger.tag = 'SEARCH'
+    api = extract_api(context)
+    api.log_tag('SEARCH')
 
 
 @search.command()
@@ -23,8 +23,8 @@ def book(context: click.Context, field: str, keyword: str):
     """
     Search for Book.
     """
-    logger, mongo = extract_logger_and_client(context)
-    logger.info('Searching for book with {}={}', field, keyword)
+    api = extract_api(context)
+    api.info('Searching for book with {}={}', field, keyword)
 
 
 @search.command()
@@ -34,5 +34,5 @@ def user(context: click.Context, field: str, keyword: str):
     """
     Search for User.
     """
-    logger, mongo = extract_logger_and_client(context)
-    logger.info('Searching for user with {}={}', field, keyword)
+    api = extract_api(context)
+    api.info('Searching for user with {}={}', field, keyword)

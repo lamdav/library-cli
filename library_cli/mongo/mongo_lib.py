@@ -4,6 +4,7 @@ from pymongo import MongoClient
 from .action.action import action
 from .adder.adder import add
 from .editor.editor import edit
+from .mongo_api import MongoAPI
 from .remover.remover import remove
 from .searcher.searcher import search
 from .sorter.sorter import sort
@@ -17,9 +18,11 @@ def cli(context: click.Context):
     """
     Mongo Library Client Implementation.
     """
+    logger = Logger()
+    client = MongoClient()
+    api = MongoAPI(client, logger)
     context.obj = {
-        'logger': Logger(),
-        'client': MongoClient()
+        'api': api
     }
 
 
