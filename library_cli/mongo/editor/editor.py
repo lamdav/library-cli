@@ -1,8 +1,10 @@
+from typing import List
+
 import click
 
 from ...context_extractor import extract_api
 
-BOOK_EDITABLE_FIELDS = ['title', 'author', 'pages', 'quantity']
+BOOK_EDITABLE_FIELDS = ['title', 'authors', 'pages', 'quantity']
 USER_EDITABLE_FIELDS = ['name', 'phone']
 
 
@@ -19,22 +21,29 @@ def edit(context: click.Context):
 @edit.command()
 @click.argument('isbn')
 @click.argument('field', type=click.Choice(BOOK_EDITABLE_FIELDS))
-@click.argument('value')
+@click.argument('value', nargs=-1, required=True)
 @click.pass_context
-def book(context: click.Context, isbn: str, field: str, value: str):
+def book(context: click.Context, isbn: str, field: str, value: List[str]):
     """
     Edit a book from the library.
 
     Edit any field should also update any relevant data structures needed to quickly search.
     """
     api = extract_api(context)
-    api.info('Editing book isbn={} field={} new_value={}', isbn, field, value)
+    if field != 'authors' and len(value) > 1:
+        api.error('Field {} only accepts exactly 1 value but got {}', field, value)
+        exit(1)
+    elif field != 'authors':
+        value, *ignore = value
+
+    exit(0) if api.edit_book(isbn, field, value) else exit(1)
 
 
 @edit.command()
 @click.argument('username')
 @click.argument('field', type=click.Choice(USER_EDITABLE_FIELDS))
 @click.argument('value')
+@click.pass_context
 def user(context: click.Context, username: str, field: str, value: str):
     """
     Edit a user from the library.
@@ -42,4 +51,4 @@ def user(context: click.Context, username: str, field: str, value: str):
     Edit any field should also update any relevant data structures needed to quickly search.
     """
     api = extract_api(context)
-    api.info('Editing book isbn={} field={} new_value={}', username, field, value)
+    exit(0) if api.edit_user(username, field, value) else exit(1)

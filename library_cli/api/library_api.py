@@ -30,6 +30,14 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
+    def edit_book(self, isbn: str, field: str, value: any) -> bool:
+        """
+        Edit a Book in the library.
+
+        :return: True if successful. False otherwise.
+        """
+        raise NotImplementedError
+
     def remove_book(self, book: Book) -> bool:
         """
         Remove a Book from the library.
@@ -41,6 +49,14 @@ class LibraryAPI(object):
     def get_user(self, username: str) -> User:
         """
         Get a User from the library.
+        """
+        raise NotImplementedError
+
+    def edit_user(self, username: str, field: str, value: str) -> bool:
+        """
+        Edit a User in the library.
+
+        :return: True if successful. False otherwise.
         """
         raise NotImplementedError
 
