@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from .book import Book
 from .user import User
@@ -32,7 +32,7 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
-    def edit_book(self, isbn: str, field: str, value: any) -> bool:
+    def edit_book(self, isbn: str, field: str, value: List[str]) -> bool:
         """
         Edit a Book in the library.
 
@@ -45,6 +45,14 @@ class LibraryAPI(object):
         Remove a Book from the library.
 
         :return: True if successful. False otherwise.
+        """
+        raise NotImplementedError
+
+    def find_book(self, field: str, value: any) -> List[Book]:
+        """
+        Find a book by the field and value.
+
+        :return: List of Books matching the criteria.
         """
         raise NotImplementedError
 
@@ -71,6 +79,14 @@ class LibraryAPI(object):
     def remove_user(self, username: str):
         """
         Remove a User from the library.
+        """
+        raise NotImplementedError
+
+    def find_user(self, field: str, value: str) -> List[User]:
+        """
+        Find a User by the field and value.
+
+        :return: List of Users matching the criteria.
         """
         raise NotImplementedError
 

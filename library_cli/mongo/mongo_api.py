@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from pymongo import MongoClient
 from pymongo.collection import Collection
@@ -25,17 +25,21 @@ class MongoAPI(LibraryAPI):
         }
         result = book_collection.find_one(search_query)
         if result:
-            book = Book(title=result.get('title'),
-                        authors=result.get('authors'),
-                        isbn=result.get('isbn'),
-                        pages=result.get('pages'),
-                        quantity=result.get('quantity'))
-
-            # Non constructor specifics
-            book.id = result.get('_id')
-            book.borrowers = result.get('borrowers')
-            return book
+            return self.__make_book(result)
         return None
+
+    @staticmethod
+    def __make_book(result: dict) -> Book:
+        book = Book(title=result.get('title'),
+                    authors=result.get('authors'),
+                    isbn=result.get('isbn'),
+                    pages=result.get('pages'),
+                    quantity=result.get('quantity'))
+
+        # Non constructor specifics
+        book.id = result.get('_id', None)
+        book.borrowers = result.get('borrowers', [])
+        return book
 
     def get_user(self, username: str) -> Optional[User]:
         user_collection = self.__get_collection(USER_COLLECTION)
@@ -44,15 +48,19 @@ class MongoAPI(LibraryAPI):
         }
         result = user_collection.find_one(search_query)
         if result:
-            user = User(name=result.get('name'),
-                        username=result.get('username'),
-                        phone=result.get('phone'))
-
-            # Non constructor specifics
-            user.id = result.get('id')
-            user.borrowing = result.get('borrowing')
-            return user
+            return self.__make_user(result)
         return None
+
+    @staticmethod
+    def __make_user(result: dict) -> User:
+        user = User(name=result.get('name'),
+                    username=result.get('username'),
+                    phone=result.get('phone'))
+
+        # Non constructor specifics
+        user.id = result.get('_id', None)
+        user.borrowing = result.get('borrowing', [])
+        return user
 
     def add_book(self, book: Book) -> bool:
         self.client: MongoClient
@@ -110,10 +118,16 @@ class MongoAPI(LibraryAPI):
             self.error('User with username {} already exists', user.username)
             return False
 
-    def edit_book(self, isbn: str, field: str, value: any) -> bool:
+    def edit_book(self, isbn: str, field: str, value: List[str]) -> bool:
         self.client: MongoClient
 
         self.info('Editing book isbn={} field={} new_value={}', isbn, field, value)
+        if field != 'authors' and len(value) > 1:
+            self.error('Field {} only accepts exactly 1 value but got {}', field, value)
+            return False
+        elif field != 'authors':
+            value, *ignore = value
+
         book_collection = self.__get_collection(BOOK_COLLECTION)
 
         search_query = {'isbn': isbn}
@@ -221,6 +235,46 @@ class MongoAPI(LibraryAPI):
         else:
             self.error('Unable to remove User with username={} as the user has checked out one or more books', username)
             return False
+
+    def find_book(self, field: str, value: List[str]) -> List[Book]:
+        self.client: MongoClient
+
+        self.info('Searching for Book with field={} value={}', field, value)
+        book_collection = self.__get_collection(BOOK_COLLECTION)
+
+        if field == 'authors':
+            search_query = {
+                field: {'$all': value}
+            }
+        elif len(value) == 1:
+            value, *ignore = value
+            search_query = {
+                field: value
+            }
+        else:
+            self.error('Field {} only accepts exactly 1 value but got {}', field, value)
+            return []
+
+        cursor = book_collection.find(search_query)
+        books = []
+        for book in cursor:
+            books.append(self.__make_book(book))
+        return books
+
+    def find_user(self, field: str, value: str) -> List[User]:
+        self.client: MongoClient
+
+        self.info('Searching for User with field={} value={}', field, value)
+        user_collection = self.__get_collection(USER_COLLECTION)
+
+        search_query = {
+            field: value
+        }
+        cursor = user_collection.find(search_query)
+        users = []
+        for user in cursor:
+            users.append(self.__make_user(user))
+        return users
 
     def __get_collection(self, collection: str) -> Collection:
         db = self.client.get_database(DATABASE)

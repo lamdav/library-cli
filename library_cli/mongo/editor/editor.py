@@ -30,12 +30,6 @@ def book(context: click.Context, isbn: str, field: str, value: List[str]):
     Edit any field should also update any relevant data structures needed to quickly search.
     """
     api = extract_api(context)
-    if field != 'authors' and len(value) > 1:
-        api.error('Field {} only accepts exactly 1 value but got {}', field, value)
-        exit(1)
-    elif field != 'authors':
-        value, *ignore = value
-
     exit(0) if api.edit_book(isbn, field, value) else exit(1)
 
 
