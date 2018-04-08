@@ -99,32 +99,42 @@ class LibraryAPI(object):
     def sort_user_by(self, field: str) -> List[User]:
         """
         Sort all Users by the field.
+
+        :return: List of User sorted by field.
         """
         raise NotImplementedError
 
-    def check_out_book_for_user(self, book: Book, user: User):
+    def check_out_book_for_user(self, isbn: str, username: str) -> bool:
         """
         Check out a Book for the User.
+
+        :return: True if the Book was checked out for the user. False otherwise.
         """
         raise NotImplementedError
 
-    def return_book_for_user(self, book: Book, user: User):
+    def return_book_for_user(self, isbn: str, username: str) -> bool:
         """
-        Return a book for the User.
+        Return a Book for the User.
+
+        :return: True if the book was returned successfully. False otherwise.
         """
         raise NotImplementedError
 
-    def get_user_stats(self, user: User):
+    def get_user_stats(self, username: str) -> List[Book]:
         """
         Get the stats of the User.
         What books does the User currently have checked out and how many.
+
+        :return: List of Books checked out by user.
         """
         raise NotImplementedError
 
-    def get_book_stats(self, book: Book):
+    def get_book_stats(self, isbn: str) -> List[User]:
         """
         Get the stats of the Book.
         Which user currently have this Book checked out.
+
+        :return: List of Users checking out this book.
         """
         raise NotImplementedError
 

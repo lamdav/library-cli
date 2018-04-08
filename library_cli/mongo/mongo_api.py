@@ -1,5 +1,6 @@
 from typing import Optional, List, Callable
 
+from bson import DBRef, ObjectId
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.results import UpdateResult, DeleteResult
@@ -63,8 +64,6 @@ class MongoAPI(LibraryAPI):
         return user
 
     def add_book(self, book: Book) -> bool:
-        self.client: MongoClient
-
         self.info('Adding {}', book)
         book_collection = self.__get_collection(BOOK_COLLECTION)
 
@@ -92,8 +91,6 @@ class MongoAPI(LibraryAPI):
             return False
 
     def add_user(self, user: User) -> bool:
-        self.client: MongoClient
-
         self.info('Adding {}', user)
         user_collection = self.__get_collection(USER_COLLECTION)
 
@@ -119,14 +116,21 @@ class MongoAPI(LibraryAPI):
             return False
 
     def edit_book(self, isbn: str, field: str, value: List[str]) -> bool:
-        self.client: MongoClient
-
         self.info('Editing book isbn={} field={} new_value={}', isbn, field, value)
         if field != 'authors' and len(value) > 1:
             self.error('Field {} only accepts exactly 1 value but got {}', field, value)
             return False
         elif field != 'authors':
             value, *ignore = value
+
+        if field == 'quantity':
+            try:
+                value = int(value)
+            except ValueError:
+                self.error('Field {} requires value to be an integer but got {}', field, value)
+                return False
+            if value < 0:
+                self.error('Field {} requires value to be a positive integer by got {}', field, value)
 
         book_collection = self.__get_collection(BOOK_COLLECTION)
 
@@ -154,8 +158,6 @@ class MongoAPI(LibraryAPI):
             return False
 
     def edit_user(self, username: str, field: str, value: str) -> bool:
-        self.client: MongoClient
-
         self.info('Editing User username={} field={} new_value={}', username, field, value)
         user_collection = self.__get_collection(USER_COLLECTION)
 
@@ -183,8 +185,6 @@ class MongoAPI(LibraryAPI):
             return False
 
     def remove_book(self, isbn: str) -> bool:
-        self.client: MongoClient
-
         self.info('Removing Book isbn={}', isbn)
         book_collection = self.__get_collection(BOOK_COLLECTION)
 
@@ -210,8 +210,6 @@ class MongoAPI(LibraryAPI):
             return False
 
     def remove_user(self, username: str) -> bool:
-        self.client: MongoClient
-
         self.info('Removing User username={}', username)
         user_collection = self.__get_collection(USER_COLLECTION)
 
@@ -237,8 +235,6 @@ class MongoAPI(LibraryAPI):
             return False
 
     def find_book(self, field: str, value: List[str]) -> List[Book]:
-        self.client: MongoClient
-
         self.info('Searching for Book with field={} value={}', field, value)
         book_collection = self.__get_collection(BOOK_COLLECTION)
 
@@ -262,8 +258,6 @@ class MongoAPI(LibraryAPI):
         return books
 
     def find_user(self, field: str, value: str) -> List[User]:
-        self.client: MongoClient
-
         self.info('Searching for User with field={} value={}', field, value)
         user_collection = self.__get_collection(USER_COLLECTION)
 
@@ -277,16 +271,12 @@ class MongoAPI(LibraryAPI):
         return users
 
     def sort_book_by(self, field: str) -> List[Book]:
-        self.client: MongoClient
-
         self.info('Sorting Books by {}', field)
         book_collection = self.__get_collection(BOOK_COLLECTION)
 
         return self.__get_sorted_entity(book_collection, field, self.__make_book)
 
     def sort_user_by(self, field: str) -> List[User]:
-        self.client: MongoClient
-
         self.info('Sorting Users by {}', field)
         user_collection = self.__get_collection(USER_COLLECTION)
 
@@ -300,9 +290,176 @@ class MongoAPI(LibraryAPI):
             entities.append(maker(entity))
         return entities
 
+    def check_out_book_for_user(self, isbn: str, username: str) -> bool:
+        self.info('Checking out Book isbn={} for User username={}', isbn, username)
+
+        self.info('Retrieving User username={}', username)
+        user = self.get_user(username)
+        if not user:
+            self.error('User username={} does not exist', username)
+            return False
+
+        self.info('Retrieving Book isbn={}', isbn)
+        book = self.get_book(isbn)
+        if not book:
+            self.error('Book with isbn={} does not exist', isbn)
+            return False
+
+        self.info('Checking Book stock')
+        if book.quantity == 0:
+            self.error('Book with isbn={} is out of stock', isbn)
+            return False
+
+        self.info('Creating references')
+        user_ref = DBRef(USER_COLLECTION, user.id, DATABASE)
+        book_ref = DBRef(BOOK_COLLECTION, book.id, DATABASE)
+
+        self.info('Updating User username={}', username)
+        user_collection = self.__get_collection(USER_COLLECTION)
+        user_search_query = {
+            '_id': user.id
+        }
+        user_update_query = {
+            '$push': {'borrowing': book_ref}
+        }
+        user_update_result = user_collection.update_one(user_search_query, user_update_query)
+
+        self.__log_update_result(user_update_result)
+        if not user_update_result.acknowledged:
+            self.error('User update was not acknowledged')
+            return False
+        elif not user_update_result.modified_count:
+            self.error('User update failed to push book reference {}', book_ref)
+            return False
+
+        self.info('Updating Book isbn={}', isbn)
+        book_collection = self.__get_collection(BOOK_COLLECTION)
+        book_search_query = {
+            '_id': book.id
+        }
+        book_update_query = {
+            '$push': {'borrowers': user_ref},
+            '$set': {'quantity': book.quantity - 1}
+        }
+        book_update_result = book_collection.update_one(book_search_query, book_update_query)
+
+        self.__log_update_result(book_update_result)
+        if not book_update_result.acknowledged:
+            self.error('Book update was not acknowledge')
+            return False
+        elif not book_update_result.modified_count:
+            self.error('Book update failed to push user reference {}', user_ref)
+            return False
+        self.success('Checked out Book isbn={} for User username={}', isbn, username)
+        return True
+
+    def return_book_for_user(self, isbn: str, username: str) -> bool:
+        def get_updated_reference_list(references: List[DBRef], searching: ObjectId):
+            updated_references = []
+            found = False
+            for reference in references:
+                if not found and reference.id == searching:
+                    found = True
+                else:
+                    updated_references.append(reference)
+            return updated_references, found
+
+        self.info('Returning Book isbn={} for User username={}', isbn, username)
+
+        self.info('Retrieving User username={}', username)
+        user = self.get_user(username)
+        if not user:
+            self.error('User username={} does not exist', username)
+            return False
+
+        self.info('Retrieving Book isbn={}', isbn)
+        book = self.get_book(isbn)
+        if not book:
+            self.error('Book with isbn={} does not exist', isbn)
+            return False
+
+        self.info('Checking if User username={} has checked out Book isbn={}', username, isbn)
+        updated_borrowing, found = get_updated_reference_list(user.borrowing, book.id)
+        if not found:
+            self.error('User username={} has not checked out Book isbn={}', username, isbn)
+            return False
+
+        self.info('Checking if Book isbn={} list User username={} as borrower', isbn, username)
+        updated_borrowers, found = get_updated_reference_list(book.borrowers, user.id)
+        if not found:
+            self.error('Book isbn={} does not have User username={} listed as borrower', username, isbn)
+            return False
+
+        user_collection = self.__get_collection(USER_COLLECTION)
+        user_search_query = {
+            '_id': user.id
+        }
+        user_update_query = {
+            '$set': {'borrowing': updated_borrowing}
+        }
+        user_update_result = user_collection.update_one(user_search_query, user_update_query)
+        self.__log_update_result(user_update_result)
+
+        if not user_update_result.acknowledged:
+            self.error('User update was not acknowledged')
+            return False
+        elif not user_update_result.modified_count:
+            self.error('User update failed to update borrowings')
+            return False
+
+        book_collection = self.__get_collection(BOOK_COLLECTION)
+        book_search_query = {
+            '_id': book.id
+        }
+        book_update_query = {
+            '$set': {
+                'borrowers': updated_borrowers,
+                'quantity': book.quantity + 1
+            }
+        }
+        book_update_result = book_collection.update_one(book_search_query, book_update_query)
+
+        if not book_update_result.acknowledged:
+            self.error('Book update was not acknowledged')
+            return False
+        elif not book_update_result.modified_count:
+            self.error('Book update failed to update borrowers')
+            return False
+
+        self.success('Book isbn={} was returned for User user={}', isbn, username)
+        return True
+
+    def get_book_stats(self, isbn: str) -> List[User]:
+        self.info('Getting who checked out Book isbn={}', isbn)
+        book = self.get_book(isbn)
+        if not book:
+            self.error('Book isbn={} does not exist', isbn)
+            return []
+        return self.__get_dereferenced_list(book.borrowers, self.__make_user)
+
+    def get_user_stats(self, username: str) -> List[Book]:
+        self.info('Getting Books the User username={} has checked out', username)
+        user = self.get_user(username)
+        if not user:
+            self.error('User username={} does not exists', username)
+            return []
+        return self.__get_dereferenced_list(user.borrowing, self.__make_book)
+
+    def __get_dereferenced_list(self, references: List[DBRef], maker: Callable) -> List:
+        db = self.__get_db()
+        entities = []
+        for reference in references:
+            entity = db.dereference(reference)
+            entities.append(maker(entity))
+        return entities
+
     def __get_collection(self, collection: str) -> Collection:
-        db = self.client.get_database(DATABASE)
+        db = self.__get_db()
         return db.get_collection(collection)
+
+    def __get_db(self):
+        self.client: MongoClient
+        return self.client.get_database(DATABASE)
 
     def __ack_failed(self):
         self.error('Mongo failed to acknowledge edit request')

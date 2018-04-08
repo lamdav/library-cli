@@ -1,6 +1,7 @@
 import click
 
 from ...context_extractor import extract_api
+from ...entity_displayer import display_entities
 
 
 @click.group()
@@ -21,7 +22,12 @@ def book(context: click.Context, isbn: str):
     Statistic on the book.
     """
     api = extract_api(context)
-    api.info('Getting stats on book isbn={}', isbn)
+    users = api.get_book_stats(isbn)
+    if users:
+        display_entities(users, api.error, api.success)
+    else:
+        api.warn('No one has checked out Book isbn={}', isbn)
+        exit(0)
 
 
 @stat.command()
@@ -32,4 +38,8 @@ def user(context: click.Context, username: str):
     Statistic on the user.
     """
     api = extract_api(context)
-    api.info('Getting stats on user username={}', username)
+    books = api.get_user_stats(username)
+    if books:
+        display_entities(books, api.error, api.success)
+    else:
+        api.warn('User username={} has not checked out any book', username)

@@ -21,7 +21,7 @@ class Logger(object):
         """
         Helper method to stylistically print warning level logs.
         """
-        self.__display(self, format_string.format(*args), 'yellow')
+        self.__display(format_string.format(*args), 'yellow')
 
     def error(self, format_string: str, *args):
         """

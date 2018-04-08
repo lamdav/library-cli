@@ -22,7 +22,7 @@ def take(context: click.Context, username: str, isbn: str):
     Borrow a book with isbn under user with username.
     """
     api = extract_api(context)
-    api.info('Taking book isbn={} for user username={}', isbn, username)
+    exit(0) if api.check_out_book_for_user(isbn, username) else exit(1)
 
 
 @action.command()
@@ -34,4 +34,4 @@ def give(context: click.Context, username: str, isbn: str):
     Return a book with isbn a user with username has checked out.
     """
     api = extract_api(context)
-    api.info('Giving book isbn={} for user username={}', isbn, username)
+    exit(0) if api.return_book_for_user(isbn, username) else exit(1)
