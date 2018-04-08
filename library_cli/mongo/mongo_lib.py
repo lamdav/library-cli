@@ -3,6 +3,7 @@ from pymongo import MongoClient
 
 from .action.action import action
 from .adder.adder import add
+from .deleter.deleter import delete
 from .editor.editor import edit
 from .mongo_api import MongoAPI
 from .remover.remover import remove
@@ -42,3 +43,4 @@ cli.add_command(search)
 cli.add_command(sort)
 cli.add_command(action)
 cli.add_command(stat)
+cli.add_command(delete)

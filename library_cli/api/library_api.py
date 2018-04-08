@@ -20,7 +20,7 @@ class LibraryAPI(object):
         """
         Get a Book with the given isbn from the library.
 
-        :return: Book
+        :return: None or the Book with this isbn.
         """
         raise NotImplementedError
 
@@ -59,12 +59,22 @@ class LibraryAPI(object):
     def sort_book_by(self, field: str) -> List[Book]:
         """
         Sort all Books by the field.
+
+        :return: List of Books sorted by field.
+        """
+        raise NotImplementedError
+
+    def delete_book_field(self, isbn: str, field: str) -> bool:
+        """
+        Delete an attribute of a Book.
         """
         raise NotImplementedError
 
     def get_user(self, username: str) -> Optional[User]:
         """
         Get a User from the library.
+
+        :return: None or the User with this username.
         """
         raise NotImplementedError
 
@@ -76,15 +86,19 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
-    def add_user(self, user: User):
+    def add_user(self, user: User) -> bool:
         """
         Add a User to the library.
+
+        :return: True if successful. False otherwise.
         """
         raise NotImplementedError
 
-    def remove_user(self, username: str):
+    def remove_user(self, username: str) -> bool:
         """
         Remove a User from the library.
+
+        :return: True if successful. False otherwise.
         """
         raise NotImplementedError
 
@@ -101,6 +115,14 @@ class LibraryAPI(object):
         Sort all Users by the field.
 
         :return: List of User sorted by field.
+        """
+        raise NotImplementedError
+
+    def delete_user_field(self, username: str, field: str) -> bool:
+        """
+        Delete an attribute of a User.
+
+        :return: True if successful. False otherwise.
         """
         raise NotImplementedError
 

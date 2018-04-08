@@ -339,7 +339,7 @@ class MongoAPI(LibraryAPI):
         }
         book_update_query = {
             '$push': {'borrowers': user_ref},
-            '$set': {'quantity': book.quantity - 1}
+            '$inc': {'quantity': -1}
         }
         book_update_result = book_collection.update_one(book_search_query, book_update_query)
 
@@ -413,8 +413,10 @@ class MongoAPI(LibraryAPI):
         }
         book_update_query = {
             '$set': {
-                'borrowers': updated_borrowers,
-                'quantity': book.quantity + 1
+                'borrowers': updated_borrowers
+            },
+            '$inc': {
+                'quantity': 1
             }
         }
         book_update_result = book_collection.update_one(book_search_query, book_update_query)
@@ -441,9 +443,78 @@ class MongoAPI(LibraryAPI):
         self.info('Getting Books the User username={} has checked out', username)
         user = self.get_user(username)
         if not user:
-            self.error('User username={} does not exists', username)
+            self.error('User username={} does not exist', username)
             return []
         return self.__get_dereferenced_list(user.borrowing, self.__make_book)
+
+    def delete_book_field(self, isbn: str, field: str) -> bool:
+        self.info('Deleting field {} from Book isbn={}', field, isbn)
+
+        book = self.get_book(isbn)
+        if not book:
+            self.error('Book isbn={} does not exist', isbn)
+            return False
+        book_collection = self.__get_collection(BOOK_COLLECTION)
+
+        if not getattr(book, field):
+            self.error('Book isbn={} has no field {} to delete', isbn, field)
+            return False
+
+        search_query = {
+            '_id': book.id
+        }
+        update_query = {
+            '$unset': {
+                field: ''  # the value does not matter.
+            }
+        }
+        result = book_collection.update_one(search_query, update_query)
+        self.__log_update_result(result)
+
+        if not result.acknowledged:
+            self.error('Book field delete was not acknowledged')
+            return False
+        elif not result.modified_count:
+            self.error('Book field delete was unsuccessful')
+            return False
+
+        self.success('Book isbn={} no longer has field={}', isbn, field)
+        return True
+
+    def delete_user_field(self, username: str, field: str) -> bool:
+        self.info('Deleting field {} from User username={}', field, username)
+
+        user = self.get_user(username)
+        if not user:
+            self.error('User username={} does not exist', username)
+            return False
+
+        if not getattr(user, field):
+            self.error('User username={} does not exist', username)
+            return False
+
+        user_collection = self.__get_collection(USER_COLLECTION)
+
+        search_query = {
+            '_id': user.id
+        }
+        update_query = {
+            '$unset': {
+                field: ''
+            }
+        }
+        result = user_collection.update_one(search_query, update_query)
+        self.__log_update_result(result)
+
+        if not result.acknowledged:
+            self.error('User field delete was not acknowledged')
+            return False
+        elif not result.modified_count:
+            self.error('User field delete was unsuccessful')
+            return False
+
+        self.success('User username={} no longer has field={}', username, field)
+        return True
 
     def __get_dereferenced_list(self, references: List[DBRef], maker: Callable) -> List:
         db = self.__get_db()
