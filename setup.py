@@ -13,7 +13,8 @@ setup(name='lib-cli',
           'Click==6.7',
           'colorama==0.3.9',
           'redis==2.10.6',
-          'pymongo==3.6.1'
+          'pymongo==3.6.1',
+          'bson'
       ],
       python_requires='>=3.5',
       entry_points={
