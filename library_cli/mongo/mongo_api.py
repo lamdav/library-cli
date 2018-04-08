@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Callable
 
 from pymongo import MongoClient
 from pymongo.collection import Collection
@@ -275,6 +275,30 @@ class MongoAPI(LibraryAPI):
         for user in cursor:
             users.append(self.__make_user(user))
         return users
+
+    def sort_book_by(self, field: str) -> List[Book]:
+        self.client: MongoClient
+
+        self.info('Sorting Books by {}', field)
+        book_collection = self.__get_collection(BOOK_COLLECTION)
+
+        return self.__get_sorted_entity(book_collection, field, self.__make_book)
+
+    def sort_user_by(self, field: str) -> List[User]:
+        self.client: MongoClient
+
+        self.info('Sorting Users by {}', field)
+        user_collection = self.__get_collection(USER_COLLECTION)
+
+        return self.__get_sorted_entity(user_collection, field, self.__make_user)
+
+    @staticmethod
+    def __get_sorted_entity(collection: Collection, field: str, maker: Callable):
+        cursor = collection.find().sort(field)
+        entities = []
+        for entity in cursor:
+            entities.append(maker(entity))
+        return entities
 
     def __get_collection(self, collection: str) -> Collection:
         db = self.client.get_database(DATABASE)

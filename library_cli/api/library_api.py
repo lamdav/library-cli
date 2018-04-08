@@ -50,9 +50,15 @@ class LibraryAPI(object):
 
     def find_book(self, field: str, value: any) -> List[Book]:
         """
-        Find a book by the field and value.
+        Find a Book by the field and value.
 
         :return: List of Books matching the criteria.
+        """
+        raise NotImplementedError
+
+    def sort_book_by(self, field: str) -> List[Book]:
+        """
+        Sort all Books by the field.
         """
         raise NotImplementedError
 
@@ -90,6 +96,12 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
+    def sort_user_by(self, field: str) -> List[User]:
+        """
+        Sort all Users by the field.
+        """
+        raise NotImplementedError
+
     def check_out_book_for_user(self, book: Book, user: User):
         """
         Check out a Book for the User.
@@ -116,25 +128,25 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
-    def success(self, format_string, *args):
+    def success(self, format_string: str, *args):
         """
         Success level logging.
         """
         self.logger.success(format_string, *args)
 
-    def info(self, format_string, *args):
+    def info(self, format_string: str, *args):
         """
         Info level logging.
         """
         self.logger.info(format_string, *args)
 
-    def warn(self, format_string, *args):
+    def warn(self, format_string: str, *args):
         """
         Warn level logging.
         """
         self.logger.warn(format_string, *args)
 
-    def error(self, format_string, *args):
+    def error(self, format_string: str, *args):
         """
         Error level logging.
         """

@@ -1,8 +1,9 @@
-from typing import List, Callable
+from typing import List
 
 import click
 
 from ...context_extractor import extract_api
+from ...entity_displayer import display_entities
 
 BOOK_SEARCHABLE_FIELDS = ['title', 'authors', 'isbn', 'name']
 USER_SEARCHABLE_FIELDS = ['name', 'username', 'phone']
@@ -28,7 +29,7 @@ def book(context: click.Context, field: str, value: List[str]):
     """
     api = extract_api(context)
     books = api.find_book(field, value)
-    __display(books, api.error, api.success)
+    display_entities(books, api.error, api.success)
 
 
 @search.command()
@@ -41,14 +42,4 @@ def user(context: click.Context, field: str, value: str):
     """
     api = extract_api(context)
     users = api.find_user(field, value)
-    __display(users, api.error, api.success)
-
-
-def __display(data, on_error: Callable, on_success: Callable):
-    if not data:
-        on_error('No matched found')
-        exit(1)
-    else:
-        for index, datum in enumerate(data):
-            on_success('{}: {}', index, datum)
-        exit(0)
+    display_entities(users, api.error, api.success)
