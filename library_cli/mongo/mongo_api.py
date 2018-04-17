@@ -3,6 +3,7 @@ from typing import Optional, List, Callable
 from bson import DBRef, ObjectId
 from pymongo import MongoClient
 from pymongo.collection import Collection
+from pymongo.database import Database
 from pymongo.results import UpdateResult, DeleteResult
 
 from ..api.book import Book
@@ -283,7 +284,7 @@ class MongoAPI(LibraryAPI):
         return self.__get_sorted_entity(user_collection, field, self.__make_user)
 
     @staticmethod
-    def __get_sorted_entity(collection: Collection, field: str, maker: Callable):
+    def __get_sorted_entity(collection: Collection, field: str, maker: Callable) -> List:
         cursor = collection.find().sort(field)
         entities = []
         for entity in cursor:
@@ -528,17 +529,17 @@ class MongoAPI(LibraryAPI):
         db = self.__get_db()
         return db.get_collection(collection)
 
-    def __get_db(self):
+    def __get_db(self) -> Database:
         self.client: MongoClient
         return self.client.get_database(DATABASE)
 
-    def __ack_failed(self):
-        self.error('Mongo failed to acknowledge edit request')
+    def __ack_failed(self) -> bool:
+        self.error('Mongo failed to acknowledge request')
         return False
 
-    def __log_update_result(self, result: UpdateResult):
+    def __log_update_result(self, result: UpdateResult) -> None:
         self.info('acknowledged: {} matched_count: {} modified_count: {} upserted_id: {}', result.acknowledged,
                   result.matched_count, result.modified_count, result.upserted_id)
 
-    def __log_delete_result(self, result: DeleteResult):
+    def __log_delete_result(self, result: DeleteResult) -> None:
         self.info('acknowledged {} deleted_count: {}', result.acknowledged, result.deleted_count)
