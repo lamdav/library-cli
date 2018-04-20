@@ -5,7 +5,7 @@ import click
 from ...context_extractor import extract_api
 from ...entity_displayer import display_entities
 
-BOOK_SEARCHABLE_FIELDS = ['title', 'authors', 'isbn', 'name']
+BOOK_SEARCHABLE_FIELDS = ['title', 'authors', 'isbn']
 USER_SEARCHABLE_FIELDS = ['name', 'username', 'phone']
 
 

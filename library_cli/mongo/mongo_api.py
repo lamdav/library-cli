@@ -262,9 +262,16 @@ class MongoAPI(LibraryAPI):
         self.info('Searching for User with field={} value={}', field, value)
         user_collection = self.__get_collection(USER_COLLECTION)
 
+        if field == 'phone' and value.isdigit():
+            value = int(value)
+        else:
+            self.error('Search field {} requires value {} to be numerical', field, value)
+            return []
+
         search_query = {
             field: value
         }
+
         cursor = user_collection.find(search_query)
         users = []
         for user in cursor:
