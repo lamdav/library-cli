@@ -43,11 +43,6 @@ class Neo4jAPI(LibraryAPI):
             session.run(statement)
 
     def add_book(self, book: Book) -> bool:
-        """
-        Add a Book to the library.
-
-        :return: True if successful. False otherwise.
-        """
         self.client: Driver
         self.info('adding {}', book)
 
@@ -76,11 +71,6 @@ class Neo4jAPI(LibraryAPI):
         return True
 
     def add_user(self, user: User) -> bool:
-        """
-        Add a User to the library.
-
-        :return: True if successful. False otherwise.
-        """
         self.client: Driver
         self.info('adding {}', user)
 
@@ -100,11 +90,6 @@ class Neo4jAPI(LibraryAPI):
         return True
 
     def edit_book(self, isbn: str, field: str, value: List[str]) -> bool:
-        """
-        Edit a Book in the library.
-
-        :return: True if successful. False otherwise.
-        """
         self.Client: Driver
         self.info('editing book isbn={} field={} value={}', isbn, field, value)
 
@@ -114,7 +99,7 @@ class Neo4jAPI(LibraryAPI):
         elif field != 'authors':
             value, *ignore = value
 
-        if field == 'quantity':
+        if field == 'quantity' or field == 'pages':
             try:
                 value = int(value)
             except ValueError:
@@ -168,8 +153,12 @@ class Neo4jAPI(LibraryAPI):
                         return False
 
             else:
+                if field == 'quantity' or field == 'pages':
+                    set_statement = 'SET book.{} = {} '.format(field, value)
+                else:
+                    set_statement = 'SET book.{} = "{}" '.format(field, value)
                 statement = 'MATCH (book:Book {isbn: {isbn}}) ' + \
-                            'SET book.{} = "{}" '.format(field, value) + \
+                            set_statement + \
                             'RETURN book'
                 params = {
                     'isbn': isbn,
@@ -178,6 +167,34 @@ class Neo4jAPI(LibraryAPI):
                 }
                 if not self.__run_session(session, statement, params):
                     return False
+        self.success('edited book with field={} and new value={}', field, value)
+        return True
+
+    def edit_user(self, username: str, field: str, value: str):
+        self.client: Driver
+
+        if field == 'phone':
+            try:
+                value = int(value)
+            except ValueError:
+                self.error('field {} requires value to be an integer but got {}', field, value)
+                return False
+
+        with self.client.session() as session:
+            if field == 'phone':
+                set_statement = 'SET user.{} = {} '.format(field, value)
+            else:
+                set_statement = 'SET user.{} = "{}" '.format(field, value)
+            statement = 'MATCH (user:User {username: {username}}) ' + \
+                        set_statement + \
+                        'RETURN user'
+            params = {
+                'username': username,
+                'field': field,
+                'value': value
+            }
+            if not self.__run_session(session, statement, params):
+                return False
         self.success('edited book with field={} and new value={}', field, value)
         return True
 
