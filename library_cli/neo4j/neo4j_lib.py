@@ -1,7 +1,7 @@
 import click
-from pymongo import MongoClient
+from neo4j.v1 import GraphDatabase, basic_auth
 
-from .mongo_api import MongoAPI
+from .neo4j_api import Neo4jAPI
 from ..command.action.action import action
 from ..command.adder.adder import add
 from ..command.deleter.deleter import delete
@@ -17,11 +17,13 @@ from ..logger import Logger
 @click.pass_context
 def cli(context: click.Context):
     """
-    Mongo Library Client Implementation.
+    Neo4j Library Client Implementation.
     """
     logger = Logger()
-    client = MongoClient()
-    api = MongoAPI(client, logger)
+    uri = 'bolt://localhost:7687'
+    client = GraphDatabase().driver(uri, auth=basic_auth('neo4j', 'csse433'))
+
+    api = Neo4jAPI(client, logger)
     context.obj = {
         'api': api
     }

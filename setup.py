@@ -11,13 +11,15 @@ setup(name='lib-cli',
           'Click==6.7',
           'colorama==0.3.9',
           'redis==2.10.6',
-          'pymongo==3.6.1'
+          'pymongo==3.6.1',
+          'neo4j-driver==1.5.0'
       ],
       python_requires='>=3.5',
       entry_points={
           'console_scripts': [
               'lib-redis=library_cli.redis.redis_lib:cli',
-              'lib-mongo=library_cli.mongo.mongo_lib:cli'
+              'lib-mongo=library_cli.mongo.mongo_lib:cli',
+              'lib-neo=library_cli.neo4j.neo4j_lib:cli'
           ]
       },
       include_package_data=True)
