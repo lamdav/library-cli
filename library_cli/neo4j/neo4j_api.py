@@ -205,11 +205,11 @@ class Neo4jAPI(LibraryAPI):
             if field == 'authors':
                 statement = 'MATCH (book:Book) - [relation:Author_Of] - (author:Author)' + \
                             'WHERE author.name IN {}'.format(list(value)) + \
-                            'RETURN book'
+                            'RETURN book, author'
             elif len(value) == 1:
                 value, *ignore = value
-                statement = 'MATCH (book:Book {' + field + ': "' + value + '"})' + \
-                            'RETURN book'
+                statement = 'MATCH (book:Book {' + field + ': "' + value + '"}) - [relation:Author_Of] - (author:Author)' + \
+                            'RETURN book, author'
 
 
             else:
@@ -220,8 +220,31 @@ class Neo4jAPI(LibraryAPI):
                 result = session.run(statement)
                 books = []
                 for record in result.records():
-                    books.append(record['book'])
+                    books.append((record['book'], record['author']))
                 return books
+            except CypherError as e:
+                self.error(e.message)
+                return []
+
+    def find_user(self, field: str, value: str):
+        self.client: Driver
+
+        with self.client.session() as session:
+            if field == 'phone':
+                # do not quote value. phone is an integer.
+                match_statement = 'MATCH (user:User {' + field + ': ' + value + '}) '
+            else:
+                # quote the value
+                match_statement = 'MATCH (user:User {' + field + ': "' + value + '"}) '
+
+            statement = match_statement + \
+                        'RETURN user'
+            try:
+                result = session.run(statement)
+                users = []
+                for record in result.records():
+                    users.append(record['user'])
+                return users
             except CypherError as e:
                 self.error(e.message)
                 return []
