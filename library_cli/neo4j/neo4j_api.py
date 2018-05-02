@@ -414,6 +414,15 @@ class Neo4jAPI(LibraryAPI):
         self.info('retrieving users borrowing book isbn={}', isbn)
 
         with self.client.session() as session:
+            self.info('verifying book exists')
+            book = None
+            book_result = self.get_book(isbn)
+            for book_record in book_result.records():
+                book = book_record['book']
+            if not book:
+                self.error('book isbn={} does not exist', isbn)
+                return False
+
             statement = '''
             MATCH (book:Book {isbn: {isbn}}) - [borrows:Borrows] - (user:User)
             RETURN user, borrows
@@ -435,6 +444,15 @@ class Neo4jAPI(LibraryAPI):
         self.info('retrieving books borrowed by user username={}', username)
 
         with self.client.session() as session:
+            self.info('verifying book exists')
+            user = None
+            user_result = self.get_user(username)
+            for user_record in user_result.records():
+                user = user_record['user']
+            if not user:
+                self.error('user username={} does not exist', username)
+                return []
+
             statement = '''
             MATCH (user:User {username: {username}}) - [borrows:Borrows] - (book:Book)
             RETURN book, borrows
@@ -450,6 +468,57 @@ class Neo4jAPI(LibraryAPI):
                 return books
             except CypherError as e:
                 return self.__handle_cyphererror(e)
+
+    def rate_book(self, username: str, isbn: str, score: int):
+        self.client: Driver
+
+        try:
+            self.info('verifying user exists')
+            user_result = self.get_user(username)
+            user = None
+            for user_record in user_result.records():
+                user = user_record['user']
+            if not user:
+                self.error('user username={} does not exist', username)
+                return False
+
+            self.info('verifying book exists')
+            book_result = self.get_book(isbn)
+            book = None
+            for book_record in book_result.records():
+                book = book_record['book']
+            if not book:
+                self.error('book isbn={} does not exist', isbn)
+                return False
+
+            with self.client.session() as session:
+                self.info('verifying rating does not exists')
+                statement = '''
+                MATCH (user:User {username: {username}}) - [rates:Rates] - (book:Book {isbn: {isbn}})
+                RETURN rates
+                '''
+                params = {
+                    'username': username,
+                    'isbn': isbn
+                }
+                result = session.run(statement, params)
+                for record in result.records():
+                    if 'rates' in record.keys():
+                        rates = record['rates']
+                        self.error('user username={} has already rated book isbn={} with score={}', username, isbn,
+                                   rates.get('score'))
+                        return False
+
+                create_statement = 'CREATE (user) - [rates:Rates {score: ' + str(score)+ '}] -> (book)'
+                statement = 'MATCH (user:User {username: {username}}) ' + \
+                            'MATCH (book:Book {isbn: {isbn}}) ' + \
+                            create_statement
+                self.__run_session(session, statement, params)
+                self.success('added rating score={} by user username={} to book isbn={}', score, username, isbn)
+                return True
+
+        except CypherError as e:
+            return self.__handle_cyphererror(e)
 
     def get_book(self, isbn: str):
         self.client: Driver
@@ -482,7 +551,7 @@ class Neo4jAPI(LibraryAPI):
         statement = '''
         MATCH(book: Book {isbn: {isbn}})
         MERGE(author: Author {name: {name}})
-        CREATE(book)<-[relation: Author_Of]-(author)
+        CREATE(book) <- [relation: Author_Of] - (author)
         RETURN author
         '''
         params = {

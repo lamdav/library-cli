@@ -10,6 +10,7 @@ from ..command.remover.remover import remove
 from ..command.searcher.searcher import search
 from ..command.sorter.sorter import sort
 from ..command.stat.stat import stat
+from ..context_extractor import extract_api
 from ..logger import Logger
 
 
@@ -27,6 +28,20 @@ def cli(context: click.Context):
     context.obj = {
         'api': api
     }
+
+
+@cli.command()
+@click.argument('username')
+@click.argument('isbn')
+@click.argument('score', type=click.IntRange(min=1, max=5))
+@click.pass_context
+def rate(context: click.Context, username: str, isbn: str, score=int):
+    """
+    Rate a book with the given isbn with the score as the user with username.
+    """
+    api = extract_api(context)
+    api.log_tag('RATE')
+    exit(0) if api.rate_book(username, isbn, score) else exit(1)
 
 
 @cli.command()

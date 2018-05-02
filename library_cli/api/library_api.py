@@ -160,6 +160,14 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
+    def rate_book(self, username: str, isbn: str, score: int) -> bool:
+        """
+        Rate a book with the given isbn as the given user with the provided score.
+
+        :return: True if successful. False otherwise.
+        """
+        raise NotImplementedError
+
     def success(self, format_string: str, *args):
         """
         Success level logging.
