@@ -346,7 +346,7 @@ class Neo4jAPI(LibraryAPI):
 
                 self.info('decrementing book stock')
                 statement = 'MATCH (book:Book {isbn: {isbn}}) ' + \
-                            'SET book.quantity = book.quantity - 1' + \
+                            'SET book.quantity = book.quantity - 1 ' + \
                             'RETURN book'
                 params = {
                     'isbn': isbn
@@ -388,17 +388,16 @@ class Neo4jAPI(LibraryAPI):
                 if quantity == 1:
                     self.info('deleting borrows relation: all books isbn={} returned', isbn)
                     statement = '''
-                    MATCH (user:User {username: {username}})  - [borrows:Borrows] - (book:Book {isbn: {isbn}})
+                    MATCH (user:User {username: {username}})  - [borrows:Borrows] - (book:Book {isbn: {isbn}}) 
                     DELETE borrows 
                     SET book.quantity = book.quantity + 1
-                    RETURN book               
+                    RETURN book
                     '''
                 else:
                     self.info('decrementing borrows relation quantity')
                     statement = '''
-                    MATCH (user:User {username: {username}})  - [borrows:Borrows] - (book:Book {isbn: {isbn}})
-                    SET borrows.quantity = borrows.quantity - 1
-                    SET book.quantity = book.quantity + 1
+                    MATCH (user:User {username: {username}})  - [borrows:Borrows] - (book:Book {isbn: {isbn}}) 
+                    SET borrows.quantity = borrows.quantity - 1, book.quantity = book.quantity + 1 
                     RETURN book
                     '''
                 result = session.run(statement, params)
@@ -417,7 +416,7 @@ class Neo4jAPI(LibraryAPI):
         with self.client.session() as session:
             statement = '''
             MATCH (book:Book {isbn: {isbn}}) - [borrows:Borrows] - (user:User)
-            RETURN user
+            RETURN user, borrows
             '''
             params = {
                 'isbn': isbn
@@ -426,8 +425,29 @@ class Neo4jAPI(LibraryAPI):
                 result = session.run(statement, params)
                 users = []
                 for record in result.records():
-                    users.append(record['user'])
+                    users.append((record['user'], record['borrows']))
                 return users
+            except CypherError as e:
+                return self.__handle_cyphererror(e)
+
+    def get_user_stats(self, username: str):
+        self.client: Driver
+        self.info('retrieving books borrowed by user username={}', username)
+
+        with self.client.session() as session:
+            statement = '''
+            MATCH (user:User {username: {username}}) - [borrows:Borrows] - (book:Book)
+            RETURN book, borrows
+            '''
+            params = {
+                'username': username
+            }
+            try:
+                result = session.run(statement, params)
+                books = []
+                for record in result.records():
+                    books.append((record['book'], record['borrows']))
+                return books
             except CypherError as e:
                 return self.__handle_cyphererror(e)
 
