@@ -249,6 +249,28 @@ class Neo4jAPI(LibraryAPI):
                 self.error(e.message)
                 return []
 
+    def sort_book_by(self, field: str):
+        self.client: Driver
+
+        if field == 'authors':
+            order_by_statement = 'ORDER BY author.name'
+        else:
+            order_by_statement = 'ORDER BY book.{}'.format(field)
+
+        with self.client.session() as session:
+            statement = 'MATCH (book:Book) - [relation:Author_Of] - (author:Author) ' + \
+                        'RETURN book, author ' + \
+                        order_by_statement
+            try:
+                result = session.run(statement)
+                books = []
+                for record in result.records():
+                    books.append((record['book'], record['author']))
+                return books
+            except CypherError as e:
+                self.error('{}', e.message)
+                return []
+
     def __link_author_to_book(self, session, isbn, name):
         statement = '''
         MATCH(book: Book
