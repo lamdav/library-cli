@@ -223,7 +223,7 @@ class Neo4jAPI(LibraryAPI):
                     books.append((record['book'], record['author']))
                 return books
             except CypherError as e:
-                self.error(e.message)
+                self.error('{}', e.message)
                 return []
 
     def find_user(self, field: str, value: str):
@@ -246,7 +246,7 @@ class Neo4jAPI(LibraryAPI):
                     users.append(record['user'])
                 return users
             except CypherError as e:
-                self.error(e.message)
+                self.error('{}', e.message)
                 return []
 
     def sort_book_by(self, field: str):
@@ -267,6 +267,24 @@ class Neo4jAPI(LibraryAPI):
                 for record in result.records():
                     books.append((record['book'], record['author']))
                 return books
+            except CypherError as e:
+                self.error('{}', e.message)
+                return []
+
+    def sort_user_by(self, field: str):
+        self.client: Driver
+
+        with self.client.session() as session:
+            statement = 'MATCH (user:User) ' + \
+                        'RETURN user ' + \
+                        'ORDER BY user.{}'.format(field)
+            try:
+                result = session.run(statement)
+                users = []
+                for record in result.records():
+                    users.append(record['user'])
+
+                return users
             except CypherError as e:
                 self.error('{}', e.message)
                 return []
@@ -297,7 +315,7 @@ class Neo4jAPI(LibraryAPI):
             return self.__handle_cyphererror(e)
 
     def __handle_cyphererror(self, error: CypherError):
-        self.error(error.message)
+        self.error('{}', error.message)
         return False
 
     def __log_result(self, result: StatementResult):
