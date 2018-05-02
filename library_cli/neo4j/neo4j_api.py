@@ -198,12 +198,43 @@ class Neo4jAPI(LibraryAPI):
         self.success('edited book with field={} and new value={}', field, value)
         return True
 
+    def find_book(self, field: str, value: any):
+        self.client: Driver
+
+        with self.client.session() as session:
+            if field == 'authors':
+                statement = 'MATCH (book:Book) - [relation:Author_Of] - (author:Author)' + \
+                            'WHERE author.name IN {}'.format(list(value)) + \
+                            'RETURN book'
+            elif len(value) == 1:
+                value, *ignore = value
+                statement = 'MATCH (book:Book {' + field + ': "' + value + '"})' + \
+                            'RETURN book'
+
+
+            else:
+                self.error('field {} only accepts exactly 1 value but got {}', field, value)
+                return []
+
+            try:
+                result = session.run(statement)
+                books = []
+                for record in result.records():
+                    books.append(record['book'])
+                return books
+            except CypherError as e:
+                self.error(e.message)
+                return []
+
     def __link_author_to_book(self, session, isbn, name):
         statement = '''
-        MATCH (book:Book {isbn: {isbn}})
-        MERGE (author:Author {name: {name}})
-        CREATE (book) <- [relation:Author_Of] - (author)
-        RETURN author
+        MATCH(book: Book
+        {isbn: {isbn}})
+        MERGE(author: Author
+        {name: {name}})
+        CREATE(book) < - [relation: Author_Of] - (author)
+        RETURN
+        author
         '''
         params = {
             'isbn': isbn,
