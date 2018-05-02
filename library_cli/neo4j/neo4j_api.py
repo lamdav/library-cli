@@ -407,9 +407,29 @@ class Neo4jAPI(LibraryAPI):
 
                 self.success('returned book isbn={} for user username={}', isbn, username)
                 return True
-
         except CypherError as e:
             return self.__handle_cyphererror(e)
+
+    def get_book_stats(self, isbn: str):
+        self.client: Driver
+        self.info('retrieving users borrowing book isbn={}', isbn)
+
+        with self.client.session() as session:
+            statement = '''
+            MATCH (book:Book {isbn: {isbn}}) - [borrows:Borrows] - (user:User)
+            RETURN user
+            '''
+            params = {
+                'isbn': isbn
+            }
+            try:
+                result = session.run(statement, params)
+                users = []
+                for record in result.records():
+                    users.append(record['user'])
+                return users
+            except CypherError as e:
+                return self.__handle_cyphererror(e)
 
     def get_book(self, isbn: str):
         self.client: Driver
@@ -449,7 +469,6 @@ class Neo4jAPI(LibraryAPI):
             'isbn': isbn,
             'name': name
         }
-
         return self.__run_session(session, statement, params)
 
     def __run_session(self, session, statement, params):
