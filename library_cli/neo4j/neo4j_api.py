@@ -172,6 +172,7 @@ class Neo4jAPI(LibraryAPI):
 
     def edit_user(self, username: str, field: str, value: str):
         self.client: Driver
+        self.info('editing user username={} field={} value={}', username, field, value)
 
         if field == 'phone':
             try:
@@ -200,6 +201,7 @@ class Neo4jAPI(LibraryAPI):
 
     def find_book(self, field: str, value: any):
         self.client: Driver
+        self.info('searching for book by field={} with value={}', field, value)
 
         with self.client.session() as session:
             if field == 'authors':
@@ -228,6 +230,7 @@ class Neo4jAPI(LibraryAPI):
 
     def find_user(self, field: str, value: str):
         self.client: Driver
+        self.info('searching for user by field={} with value={}', field, value)
 
         with self.client.session() as session:
             if field == 'phone':
@@ -251,6 +254,7 @@ class Neo4jAPI(LibraryAPI):
 
     def sort_book_by(self, field: str):
         self.client: Driver
+        self.info('sorting book by field={}', field)
 
         if field == 'authors':
             order_by_statement = 'ORDER BY author.name'
@@ -273,6 +277,7 @@ class Neo4jAPI(LibraryAPI):
 
     def sort_user_by(self, field: str):
         self.client: Driver
+        self.info('sorting user by field={}', field)
 
         with self.client.session() as session:
             statement = 'MATCH (user:User) ' + \
@@ -290,17 +295,12 @@ class Neo4jAPI(LibraryAPI):
                 return []
 
     def check_out_book_for_user(self, isbn: str, username: str):
-        '''
-        Get a book, check quantity property > 0, create borrows edge from user to book,
-        decrement, quantity.
-        :param isbn:
-        :param username:
-        :return:
-        '''
         self.client: Driver
+        self.info('check out book isbn={} for user username={}', isbn, username)
 
         try:
             # Check if book exists
+            self.info('verifying book exists')
             book_result = self.get_book(isbn)
             book = None
             quantity = 0
@@ -312,21 +312,23 @@ class Neo4jAPI(LibraryAPI):
                 return False
 
             # Verify book has stock
+            self.info('verifying book is in stock')
             if quantity <= 0:
                 self.error('book isbn={} is out of stock', isbn)
                 return False
 
             # Check if user exists
+            self.info('verifying user exists')
             user_result = self.get_user(username)
             user = None
             for user_record in user_result.records():
                 user = user_record['user']
-
             if not user:
                 self.error('user username={} does not exist', username)
                 return False
 
             with self.client.session() as session:
+                self.info('merging borrows relation')
                 statement = '''
                 MATCH (user:User {username: {username}})
                 MATCH (book:Book {isbn: {isbn}})
@@ -342,16 +344,70 @@ class Neo4jAPI(LibraryAPI):
                 result = session.run(statement, params)
                 self.__log_result(result)
 
-                set_statement = 'SET book.quantity = {} '.format(quantity - 1)
+                self.info('decrementing book stock')
                 statement = 'MATCH (book:Book {isbn: {isbn}}) ' + \
-                            set_statement + \
+                            'SET book.quantity = book.quantity - 1' + \
                             'RETURN book'
                 params = {
                     'isbn': isbn
                 }
                 result = session.run(statement, params)
                 self.__log_result(result)
+
+                self.success('checked out book isbn={} for user username={}', isbn, username)
                 return True
+        except CypherError as e:
+            return self.__handle_cyphererror(e)
+
+    def return_book_for_user(self, isbn: str, username: str):
+        self.client: Driver
+        self.info('return book isbn={} for user username={}', isbn, username)
+
+        try:
+            with self.client.session() as session:
+                self.info('retrieving borrows relation')
+                statement = '''
+                MATCH (user:User {username: {username}})  - [borrows:Borrows] - (book:Book {isbn: {isbn}})
+                RETURN borrows
+                '''
+                params = {
+                    'isbn': isbn,
+                    'username': username
+                }
+                result = session.run(statement, params)
+                borrows = None
+                for record in result.records():
+                    borrows = record['borrows']
+
+                self.info('verifying borrows relation exists')
+                if not borrows:
+                    self.error('book isbn={} was not checked out by user username={}', isbn, username)
+                    return False
+
+                quantity = borrows.get('quantity')
+                if quantity == 1:
+                    self.info('deleting borrows relation: all books isbn={} returned', isbn)
+                    statement = '''
+                    MATCH (user:User {username: {username}})  - [borrows:Borrows] - (book:Book {isbn: {isbn}})
+                    DELETE borrows 
+                    SET book.quantity = book.quantity + 1
+                    RETURN book               
+                    '''
+                else:
+                    self.info('decrementing borrows relation quantity')
+                    statement = '''
+                    MATCH (user:User {username: {username}})  - [borrows:Borrows] - (book:Book {isbn: {isbn}})
+                    SET borrows.quantity = borrows.quantity - 1
+                    SET book.quantity = book.quantity + 1
+                    RETURN book
+                    '''
+                result = session.run(statement, params)
+
+                self.__log_result(result)
+
+                self.success('returned book isbn={} for user username={}', isbn, username)
+                return True
+
         except CypherError as e:
             return self.__handle_cyphererror(e)
 
