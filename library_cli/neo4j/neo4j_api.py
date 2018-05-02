@@ -1,6 +1,6 @@
 from typing import List
 
-from neo4j.v1 import Driver, CypherError, Session
+from neo4j.v1 import Driver, CypherError, StatementResult
 
 from ..api.book import Book
 from ..api.library_api import LibraryAPI
@@ -52,6 +52,7 @@ class Neo4jAPI(LibraryAPI):
         self.info('adding {}', book)
 
         with self.client.session() as session:
+            self.info('creating book {}', book)
             statement = '''
             CREATE (book:Book {isbn: {isbn}, title: {title}, pages: {pages}, quantity: {quantity}})
             RETURN book
@@ -63,30 +64,15 @@ class Neo4jAPI(LibraryAPI):
                 'quantity': book.quantity
             }
 
-            try:
-                result = session.run(statement, params)
-                for record in result.records():
-                    self.info('record: {}', record)
-            except CypherError as e:
-                return self.__handle_cyphererror(e, session)
+            if not self.__run_session(session, statement, params):
+                return False
 
-            statement = '''
-            MATCH (book:Book {isbn: {isbn}})
-            MERGE (author:Author {name: {name}})
-            CREATE (book) <- [relation:Author_Of] - (author)
-            RETURN book, author
-            '''
+            self.info('linking authors {} to book', book.authors)
             for author in book.authors:
-                params = {
-                    'isbn': book.isbn,
-                    'name': author
-                }
-                try:
-                    result = session.run(statement, params)
-                    for record in result.records():
-                        self.info('record: {}', record)
-                except CypherError as e:
-                    return self.__handle_cyphererror(e, session)
+                if not self.__link_author_to_book(session, book.isbn, author):
+                    return False
+
+        self.success('added book {}', book)
         return True
 
     def add_user(self, user: User) -> bool:
@@ -108,12 +94,10 @@ class Neo4jAPI(LibraryAPI):
                 'name': user.name,
                 'phone': user.phone
             }
-            try:
-                result = session.run(statement, params)
-                for record in result.records():
-                    self.info('record: {}', record)
-            except CypherError as e:
-                return self.__handle_cyphererror(e, session)
+            if not self.__run_session(session, statement, params):
+                return False
+        self.success('added new user {}', user)
+        return True
 
     def edit_book(self, isbn: str, field: str, value: List[str]) -> bool:
         """
@@ -121,10 +105,109 @@ class Neo4jAPI(LibraryAPI):
 
         :return: True if successful. False otherwise.
         """
+        self.Client: Driver
+        self.info('editing book isbn={} field={} value={}', isbn, field, value)
 
-        raise NotImplementedError
+        if field != 'authors' and len(value) > 1:
+            self.error('field {} only accepts exactly 1 value but got {}', field, value)
+            return False
+        elif field != 'authors':
+            value, *ignore = value
 
-    def __handle_cyphererror(self, error: CypherError, session: Session):
+        if field == 'quantity':
+            try:
+                value = int(value)
+            except ValueError:
+                self.error('field {} requires value to be an integer but got {}', field, value)
+                return False
+            if value < 0:
+                self.error('field {} requires value to be a positive integer by got {}', field, value)
+                return False
+
+        with self.client.session() as session:
+            if field == 'authors':
+                self.info('removing existing authors from book isbn={}', isbn)
+                statement = '''
+                MATCH (book:Book {isbn: {isbn}}) - [relationship:Author_Of] - (author:Author)
+                DELETE relationship
+                RETURN author
+                '''
+                params = {
+                    'isbn': isbn
+                }
+                # NOTE: do not call __run_session if using result
+                result = session.run(statement, params)
+
+                self.info('cleaning up orphaned authors')
+                for record in result.records():
+                    author = record['author']
+                    statement = '''
+                    MATCH (author:Author {name: {name}}) - [relation:Author_Of] - (:Book)
+                    RETURN author, COUNT(relation) as count
+                    '''
+                    params = {
+                        'name': author.get('name')
+                    }
+                    result = session.run(statement, params)
+                    for count_record in result.records():
+                        if count_record['count'] == 0:
+                            self.info('deleting author {} as there are no books with this author', author.get('name'))
+                            statement = '''
+                            MATCH (author:Author {name: {name}})
+                            DELETE author
+                            '''
+                            params = {
+                                'name': author.get('name')
+                            }
+                            if not self.__run_session(session, statement, params):
+                                return False
+
+                self.info('linking new authors {}', value)
+                for author in value:
+                    if not self.__link_author_to_book(session, isbn, author):
+                        return False
+
+            else:
+                statement = 'MATCH (book:Book {isbn: {isbn}}) ' + \
+                            'SET book.{} = "{}" '.format(field, value) + \
+                            'RETURN book'
+                params = {
+                    'isbn': isbn,
+                    'field': field,
+                    'value': value
+                }
+                if not self.__run_session(session, statement, params):
+                    return False
+        self.success('edited book with field={} and new value={}', field, value)
+        return True
+
+    def __link_author_to_book(self, session, isbn, name):
+        statement = '''
+        MATCH (book:Book {isbn: {isbn}})
+        MERGE (author:Author {name: {name}})
+        CREATE (book) <- [relation:Author_Of] - (author)
+        RETURN author
+        '''
+        params = {
+            'isbn': isbn,
+            'name': name
+        }
+
+        return self.__run_session(session, statement, params)
+
+    def __run_session(self, session, statement, params):
+        try:
+            result = session.run(statement, params)
+            self.__log_result(result)
+            return True
+        except CypherError as e:
+            return self.__handle_cyphererror(e)
+
+    def __handle_cyphererror(self, error: CypherError):
         self.error(error.message)
-        session.close()
         return False
+
+    def __log_result(self, result: StatementResult):
+        for record in result.records():
+            for key in record.keys():
+                self.info('{}: {}', key, record[key])

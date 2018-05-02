@@ -132,6 +132,7 @@ class MongoAPI(LibraryAPI):
                 return False
             if value < 0:
                 self.error('Field {} requires value to be a positive integer by got {}', field, value)
+                return False
 
         book_collection = self.__get_collection(BOOK_COLLECTION)
 
