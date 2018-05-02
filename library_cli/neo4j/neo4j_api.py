@@ -289,15 +289,105 @@ class Neo4jAPI(LibraryAPI):
                 self.error('{}', e.message)
                 return []
 
+    def check_out_book_for_user(self, isbn: str, username: str):
+        '''
+        Get a book, check quantity property > 0, create borrows edge from user to book,
+        decrement, quantity.
+        :param isbn:
+        :param username:
+        :return:
+        '''
+        self.client: Driver
+
+        try:
+            # Check if book exists
+            book_result = self.get_book(isbn)
+            book = None
+            quantity = 0
+            for book_record in book_result.records():
+                book = book_record['book']
+                quantity = book.get('quantity')
+            if not book:
+                self.error('book isbn={} does not exist', isbn)
+                return False
+
+            # Verify book has stock
+            if quantity <= 0:
+                self.error('book isbn={} is out of stock', isbn)
+                return False
+
+            # Check if user exists
+            user_result = self.get_user(username)
+            user = None
+            for user_record in user_result.records():
+                user = user_record['user']
+
+            if not user:
+                self.error('user username={} does not exist', username)
+                return False
+
+            with self.client.session() as session:
+                statement = '''
+                MATCH (user:User {username: {username}})
+                MATCH (book:Book {isbn: {isbn}})
+                MERGE (user) - [borrows:Borrows] -> (book)
+                ON CREATE SET borrows.quantity = 1
+                ON MATCH SET borrows.quantity = borrows.quantity + 1
+                RETURN borrows
+                '''
+                params = {
+                    'username': username,
+                    'isbn': isbn
+                }
+                result = session.run(statement, params)
+                self.__log_result(result)
+
+                set_statement = 'SET book.quantity = {} '.format(quantity - 1)
+                statement = 'MATCH (book:Book {isbn: {isbn}}) ' + \
+                            set_statement + \
+                            'RETURN book'
+                params = {
+                    'isbn': isbn
+                }
+                result = session.run(statement, params)
+                self.__log_result(result)
+                return True
+        except CypherError as e:
+            return self.__handle_cyphererror(e)
+
+    def get_book(self, isbn: str):
+        self.client: Driver
+
+        with self.client.session() as session:
+            statement = '''
+            MATCH (book:Book {isbn: {isbn}})
+            RETURN book
+            '''
+            params = {
+                'isbn': isbn
+            }
+            return session.run(statement, params)
+
+    def get_user(self, username: str):
+
+        self.client: Driver
+
+        with self.client.session() as session:
+            statement = '''
+            MATCH (user:User {username: {username}})
+            RETURN user
+            '''
+            params = {
+                'username': username
+            }
+            return session.run(statement, params)
+
     def __link_author_to_book(self, session, isbn, name):
         statement = '''
-        MATCH(book: Book
-        {isbn: {isbn}})
-        MERGE(author: Author
-        {name: {name}})
-        CREATE(book) < - [relation: Author_Of] - (author)
-        RETURN
-        author
+        MATCH(book: Book {isbn: {isbn}})
+        MERGE(author: Author {name: {name}})
+        CREATE(book)<-[relation: Author_Of]-(author)
+        RETURN author
         '''
         params = {
             'isbn': isbn,
