@@ -11,6 +11,7 @@ from ..command.searcher.searcher import search
 from ..command.sorter.sorter import sort
 from ..command.stat.stat import stat
 from ..context_extractor import extract_api
+from ..entity_displayer import display_entities
 from ..logger import Logger
 
 
@@ -42,6 +43,19 @@ def rate(context: click.Context, username: str, isbn: str, score=int):
     api = extract_api(context)
     api.log_tag('RATE')
     exit(0) if api.rate_book(username, isbn, score) else exit(1)
+
+
+@cli.command()
+@click.argument('username')
+@click.pass_context
+def recommend(context: click.Context, username: str):
+    """
+    Get recommendations on books to read.
+    """
+    api = extract_api(context)
+    api.log_tag('RECOMMEND')
+    recommendations = api.recommend_books(username)
+    display_entities(recommendations, api.error, api.success)
 
 
 @cli.command()

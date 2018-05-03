@@ -168,6 +168,14 @@ class LibraryAPI(object):
         """
         raise NotImplementedError
 
+    def recommend_books(self, username: str) -> List:
+        """
+        Recommend a book to the user with given username.
+
+        :return: List of Book.
+        """
+        raise NotImplementedError
+
     def success(self, format_string: str, *args):
         """
         Success level logging.

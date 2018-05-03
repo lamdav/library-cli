@@ -128,7 +128,7 @@ class Neo4jAPI(LibraryAPI):
                     author = record['author']
                     statement = '''
                     MATCH (author:Author {name: {name}}) - [relation:Author_Of] - (:Book)
-                    RETURN author, COUNT(relation) as count
+                    RETURN COUNT(relation) as count
                     '''
                     params = {
                         'name': author.get('name')
@@ -141,9 +141,6 @@ class Neo4jAPI(LibraryAPI):
                             MATCH (author:Author {name: {name}})
                             DELETE author
                             '''
-                            params = {
-                                'name': author.get('name')
-                            }
                             if not self.__run_session(session, statement, params):
                                 return False
 
@@ -509,16 +506,146 @@ class Neo4jAPI(LibraryAPI):
                                    rates.get('score'))
                         return False
 
-                create_statement = 'CREATE (user) - [rates:Rates {score: ' + str(score)+ '}] -> (book)'
+                create_statement = 'CREATE (user) - [rates:Rates {score: ' + str(score) + '}] -> (book)'
                 statement = 'MATCH (user:User {username: {username}}) ' + \
                             'MATCH (book:Book {isbn: {isbn}}) ' + \
                             create_statement
-                self.__run_session(session, statement, params)
-                self.success('added rating score={} by user username={} to book isbn={}', score, username, isbn)
-                return True
-
+                if not self.__run_session(session, statement, params):
+                    return False
+            self.success('added rating score={} by user username={} to book isbn={}', score, username, isbn)
+            return True
         except CypherError as e:
             return self.__handle_cyphererror(e)
+
+    def recommend_books(self, username: str):
+        self.client: Driver
+        self.info('getting recommendations for user username={}', username)
+
+        with self.client.session() as session:
+            statement = '''
+            MATCH (:User {username: {username}}) - [r1:Rates] - (b1:Book) - [r2:Rates] - (friend:User) - [r3:Rates] - (b2:Book)
+            WHERE r1.score = r2.score
+                AND r3.score >= 3
+            RETURN b2 as recommendation
+            '''
+            params = {
+                'username': username
+            }
+            try:
+                result = session.run(statement, params)
+                recommendations = []
+                for record in result.records():
+                    recommendations.append(record['recommendation'])
+                return recommendations
+            except CypherError as e:
+                self.__handle_cyphererror(e)
+                return []
+
+    def remove_book(self, isbn: str):
+        self.client: Driver
+        self.info('removing book isbn={}', isbn)
+
+        with self.client.session() as session:
+            try:
+                self.info('checking book user relations')
+                statement = '''
+                MATCH (book:Book {isbn: {isbn}}) - [r] - (:User)
+                RETURN COUNT(r) as relations
+                '''
+                book_params = {
+                    'isbn': isbn
+                }
+                result = session.run(statement, book_params)
+                relation_count = 1
+                for record in result.records():
+                    relation_count = record['relations']
+                if relation_count != 0:
+                    self.error('book isbn={} is involved in {} user relations', isbn, relation_count)
+                    return False
+
+                self.info('removing for all author_of relations')
+                statement = '''
+                MATCH (book:Book {isbn: {isbn}}) - [relation:Author_Of] - (author:Author)
+                DELETE relation
+                RETURN author
+                '''
+                result = session.run(statement, book_params)
+
+                self.info('checking for orphaned authors')
+                for record in result.records():
+                    author = record['author']
+                    name = author.get('name')
+                    statement = '''
+                    MATCH (author:Author {name: {name}})
+                    MATCH (author) - [relation:Author_Of] - (book:Book)
+                    RETURN COUNT(relation) as relations
+                    '''
+                    author_params = {
+                        'name': name
+                    }
+                    author_result = session.run(statement, author_params)
+                    for author_record in author_result.records():
+                        relation_count = author_record['relations']
+                        if relation_count == 0:
+                            self.info('deleting author name={}', author.get('name'))
+                            statement = '''
+                            MATCH (author:Author {name: {name}})
+                            DELETE author
+                            '''
+
+                            if not self.__run_session(session, statement, author_params):
+                                self.error('failed to delete author name={}', name)
+                                return False
+
+                self.info('removing book isbn={}', isbn)
+                statement = '''
+                MATCH (book:Book {isbn: {isbn}})
+                DELETE book
+                '''
+                book_params = {
+                    'isbn': isbn
+                }
+                if self.__run_session(session, statement, book_params):
+                    self.success('removed book isbn={}', isbn)
+                    return True
+                return False
+            except CypherError as e:
+                return self.__handle_cyphererror(e)
+
+    def remove_user(self, username: str):
+        """
+        check if user exists
+        check if user made a review or is borrowing a book
+        delete user
+        """
+        self.client: Driver
+
+        with self.client.session() as session:
+            try:
+                statement = '''
+                MATCH (user:User {username: {username}}) - [r] - (:Book)
+                RETURN COUNT(r) as relations
+                '''
+                params = {
+                    'username': username
+                }
+                result = session.run(statement, params)
+
+                for record in result.records():
+                    book_relations = record['relations']
+                    if book_relations != 0:
+                        self.error('user username={} is involved in {} book relations', username, book_relations)
+                        return False
+
+                statement = '''
+                MATCH (user:User {username: {username}})
+                DELETE user
+                '''
+                session.run(statement, params)
+                self.success('removed user username={}', username)
+                return True
+            except CypherError as e:
+                return self.__handle_cyphererror(e)
 
     def get_book(self, isbn: str):
         self.client: Driver
@@ -534,10 +661,11 @@ class Neo4jAPI(LibraryAPI):
             return session.run(statement, params)
 
     def get_user(self, username: str):
-
         self.client: Driver
+        self.info('removing user username={}', username)
 
         with self.client.session() as session:
+            self.info('checking book relations')
             statement = '''
             MATCH (user:User {username: {username}})
             RETURN user
