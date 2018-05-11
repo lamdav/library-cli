@@ -14,6 +14,14 @@ My submitted solutions are all tagged with their respective database name.
 The specific Python client for each of the mentioned NoSQL database and
 `Click` for CLI parsing.
 
+## Install
+Assumes Python and pip are of Python 3.
+```shell
+git clone git@github.com:lamdaV/library-cli.git library-cli
+cd library-cli
+pip install -e .
+```
+
 ## Features
 Construct a book library app with a rudimentary interface (Command line
 interface works for me) using a high-level language (Python for example) that
